@@ -1,0 +1,11 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: scilit_db
+    tables:
+      - name: dates
+      - name: sources
+      - name: authors
+      - name: publications
+      - name: publication_authors
