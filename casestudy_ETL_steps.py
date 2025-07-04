@@ -1,13 +1,11 @@
 MDPI case-study  -  ETL steps 
 
 
-Below is a **complete Python ETL pipeline** that you can drop straight into your `scilit-case-study` repo under `src/`. It will:
+Below is complete Python ETL pipeline that you can drop straight into your `scilit-case-study` repo under `src/`.
 
-1. **Read** the raw JSON dumps in `data/raw/`  
-2. **Normalize & cleanse** into five tables: `publications`, `authors`, `publication_authors`, `sources`, `dates`  
-3. **DDL + LOAD** everything into your MySQL DW via SQLAlchemy  
-
-I’ve also sketched out an ASCII ER-diagram and marked where to fill in your MySQL credentials.  
+1. Read the raw JSON dumps in `data/raw/`  
+2. Normalize & cleanse into five tables: `publications`, `authors`, `publication_authors`, `sources`, `dates`  
+3. DDL + LOAD everything into MySQL DW via SQLAlchemy  
 
 ---
 
@@ -15,17 +13,17 @@ I’ve also sketched out an ASCII ER-diagram and marked where to fill in your My
 ```
 scilit-case-study/
 ├─ data/
-│  ├─ raw/                ← your 200 JSONs land here
+│  ├─ raw/
 ├─ src/
-│  ├─ ingest.py           ← you already have
-│  └─ transform_load.py   ← new script below
+│  ├─ ingest.py  
+│  └─ transform_load.py
 ├─ README.md
 └─ requirements.txt
 ```
 
 ---
 
-## 2. ER Diagram (ASCII sketch)
+## 2. ER Diagram
 
 ```
 ┌────────────────┐        ┌───────────────┐
@@ -49,9 +47,9 @@ scilit-case-study/
  │ source_id → sources.source_id            │
  │ issued_date_id → dates.date_id           │
  └──────┬─────────────────┬─────────────────┘
-        │                 │
-        │ M               │ 1
-        │                 │
+        │                
+        │ M               
+        │                 
  ┌──────┴────────┐   ┌────┴───────────────────┐
  │ publication_  │   │       authors          │
  │ authors       │   │────────────────────────│
@@ -66,7 +64,7 @@ scilit-case-study/
 
 ## 3. `transform_load.py`  
 
-```python
+python
 # src/transform_load.py
 
 import os
@@ -75,10 +73,10 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 
 # ───── CONFIG ────────────────────────────────────────────────────────────────
-# 1) Point this at your MySQL DW (replace placeholders):
+# 1) Pointint to MySQL DW 
 DB_URI = "mysql+pymysql://<MYSQL_USER>:<MYSQL_PASS>@localhost:3306/scilit_dw"
 
-# 2) Raw JSON folder (created by ingest.py)
+# 2) Raw JSON folder 
 RAW_DIR = os.path.join(os.path.dirname(__file__), "../data/raw")
 
 # 3) Table names
@@ -102,11 +100,10 @@ def normalize(items):
       - dates, sources, authors, publications, and publication_authors
     """
     dates, sources, authors, pubs, pub_auth = [], [], [], [], []
-    # maps for deduplication
     date_map, source_map, author_map = {}, {}, {}
 
     for pub_idx, itm in enumerate(items, start=1):
-        # ── Dates dim ─────────────────────
+        #  Dates dim 
         date_parts = itm.get("issued", {}).get("date-parts", [[None, None, None]])[0]
         y, m, d = (date_parts + [None, None, None])[:3]
         date_key = f"{y}-{m}-{d}"
@@ -118,7 +115,7 @@ def normalize(items):
             })
         date_id = date_map[date_key]
 
-        # ── Sources dim ────────────────────
+        #  Sources dim
         src = itm.get("container-title", [None])[0]
         if src and src not in source_map:
             source_map[src] = len(source_map) + 1
@@ -128,7 +125,7 @@ def normalize(items):
             })
         src_id = source_map.get(src)
 
-        # ── Publications fact ──────────────
+        #  Publications fact 
         pubs.append({
             "publication_id": pub_idx,
             "doi": itm.get("DOI"),
@@ -139,7 +136,7 @@ def normalize(items):
             "issued_date_id": date_id
         })
 
-        # ── Authors & Bridge ───────────────
+        #  Authors 
         for seq, auth in enumerate(itm.get("author", []), start=1):
             name_key = (auth.get("given"), auth.get("family"))
             if name_key not in author_map:
@@ -217,40 +214,11 @@ def create_and_load(dates, sources, authors, pubs, pub_auth):
 
     print("✅ All tables created and loaded successfully.")
 
-if __name__ == "__main__":
+        
     raw = load_raw_items(RAW_DIR)
     dims = normalize(raw)
     create_and_load(*dims)
-```
 
----
 
-### 4. How to Run  
 
-1. Install dependencies (add to `requirements.txt`):  
-   ```
-   pandas
-   sqlalchemy
-   pymysql
-   ```
-2. Ensure `data/raw/` has your 200 JSONs (run `ingest.py` first).  
-3. From your repo root:
-   ```bash
-   python src/transform_load.py
-   ```
-4. Watch for “✅ All tables created and loaded successfully.”  
 
----
-
-### 5. Next Steps & QA  
-
-- If you hit charset or length errors, tweak your `VARCHAR(...)`.  
-- Add data–quality checks by running simple `SELECT COUNT(*)` or `SELECT MIN(year)` queries as smoke tests.  
-- Hook this up as an Airflow DAG or script in `dags/` for scheduling—bonus points!  
-
-With this script, you’ve got a **production-ready** prototype:  
-- Extraction from API (ingest.py)  
-- Staging + normalization (transform_load.py)  
-- DDL, data model, and table population  
-
-Reply with any questions—credentials, edge-cases, or how to Dockerize—and we’ll polish it off.
