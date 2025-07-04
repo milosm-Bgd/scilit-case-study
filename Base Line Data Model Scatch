@@ -1,0 +1,84 @@
+
+
+Base Line Data Model Scatch 
+
+Baseline Data Model Sketch
+You need a simple, analytical-friendly ER design. Core entities:
+
+publications
+
+pk: publication_id (auto-int)
+doi (string, unique)
+title (string)
+publisher (string)
+container_title (journal or conference name)
+type (article, book-chapter, etc.)
+issued_date (date)
+
+authors
+
+pk: author_id
+given_name, family_name
+affiliation (string or fk to an affiliation table)
+
+publication_authors (many-to-many bridge)
+
+fk: publication_id
+fk: author_id
+sequence (order in author list)
+
+sources (optional normalization of container_title)
+
+pk: source_id
+source_name, issn
+
+dates (if you want a standalone date dimension)
+
+pk: date_id
+year, month, day
+
+
+Simplest staging (denormalized) version could just land into Parquet:
+
+
+Column          Type        JSON Path
+publication_id  INT         autogen
+doi             TEXT        item["DOI"]
+title           TEXT        item["title"][0]
+publisher       TEXT        item["publisher"]
+container_title TEXT        item.get("container-title", [None])[0]
+type            TEXT        item["type"]
+issued_date     DATE        item["issued"]["date-parts"][0]
+author_list     JSON/ARRAY  item.get("author", [])
+
+
+
+Or, if you SQL-normalize:
+
+sql
+-- publications table
+CREATE TABLE publications (
+  publication_id SERIAL PRIMARY KEY,
+  doi TEXT UNIQUE,
+  title TEXT,
+  publisher TEXT,
+  container_title TEXT,
+  type TEXT,
+  issued_date DATE
+);
+
+-- authors table
+CREATE TABLE authors (
+  author_id SERIAL PRIMARY KEY,
+  given_name TEXT,
+  family_name TEXT,
+  affiliation TEXT
+);
+
+-- bridge
+CREATE TABLE publication_authors (
+  publication_id INT REFERENCES publications,
+  author_id INT REFERENCES authors,
+  sequence INT,
+  PRIMARY KEY (publication_id, author_id)
+);

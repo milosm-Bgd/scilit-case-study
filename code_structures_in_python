@@ -1,0 +1,36 @@
+
+DOUBLE LIST Comprehension 
+
+python
+[lic_block["URL"] for lic_list in all_licenses for lic_block in lic_list]
+
+This means:
+
+1.Loop through each lic_list in all_licenses
+
+2.Then loop through each lic_block (a dict) inside that lic_list
+
+3.For each lic_block, extract the value of the "URL" key
+
+So this structure:
+
+text
+[
+  [a], 
+  [], 
+  [b, c]
+]
+...gets flattened to:
+
+text
+[a["URL"], b["URL"], c["URL"]]
+✅ In Other Words
+It's equivalent to:
+
+python
+license_urls = []
+for lic_list in all_licenses:
+    for lic_block in lic_list:
+        license_urls.append(lic_block["URL"])
+But the list comprehension version is concise and Pythonic.
+
