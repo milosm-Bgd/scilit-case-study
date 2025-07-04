@@ -1,98 +1,14 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# ## Extract part 
-
-# In[12]:
-
-
-# extracting all the licences from the given API
-url = 'https://api.crossref.org/works?sort=published&order=desc&rows=200' 
-base_url = 'https://api.crossref.org/works'
-params = {"sort": "published", "order": "desc", "rows": 200}
-
-
-# In[14]:
-
-
-response = requests.get(base_url, params=params)
-response.raise_for_status()
-json_data = response.json()
-
-
-# In[27]:
-
-
-# 2. Drill into the items list
-items = json_data["message"]["items"] # pitatiyasto bashook na ["message"]["items"]
-items
-
-
-# In[29]:
-
-
-# 3. Extract license blocks, if present
-#    Each item["license"] is itself a list of dicts describing one or more licenses.
-all_licenses = [item.get("license", []) for item in items]
-all_licenses
-
-
-# In[30]:
-
-
-# 4. (Optional) Flatten and pull just the URLs out
-license_urls = [lic_block["URL"] for lic_list in all_licenses for lic_block in lic_list]
-
-
-# In[31]:
-
-
-license_urls
-
-
 # ### ETL for the case study
 
 # #### src/ingest.py
 
 # In[2]:
 
-
 import os
 import json
 import requests
 from datetime import datetime
 
-
-# In[ ]:
-
-
-# optional cell 
-# adding path on both ways either we work like running pythn liek program in pythonscript.py or in interactive mode (UI) 
-import os
-
-try:
-    # when running as a .py file
-    ROOT = os.path.dirname(__file__)
-except NameError:
-    # when running in a notebook
-    ROOT = os.getcwd()
-
-RAW_DIR = os.path.join(ROOT, "data", "raw")
-
-
-# In[3]:
-
-
-os.getcwd()
-
-
-# In[6]:
-
-
-RAW_DIR
-
-
-# In[5]:
 
 
 RAW_DIR = "data/raw/"
@@ -102,9 +18,6 @@ PARAMS = {"sort": "published", "order": "desc", "rows": 200}
 
 # In[48]:
 
-
-# optinal
-# RAW_DIR = "data/files"
 
 
 # In[10]:
@@ -131,39 +44,13 @@ def save_raw(items):# # PuNJENJE folder path-a koji definisemo putem RAW_DIR var
     print(f"[{datetime.now()}] Saved {len(items)} JSON files to {RAW_DIR}")
 
 
-# 1 file per day /  scrape 
-# entire informaiton to keep in one file
-# datalake and raw files (keep it as is)
-# 
-# best practise: 
-# entire data liek raw information to be placed into one file (original stuff to be kept like it is)
-# save_raw() extracting and saving into separate JSON files 
-# like a intermiediate step make extraction into one big file and not going with for loop (utilizing json.dumps()) 
-# 
-
-# In[11]:
-
-
 items = fetch_crossref() # calling first function 
 save_raw(items)  # calling second function on items we created by first function 
-
-
-# In[58]:
-
-
-type(items)
-
-
-# In[19]:
-
-
-items
 
 
 # #### src/transform_load.py
 
 # In[13]:
-
 
 import os
 import json
@@ -173,45 +60,9 @@ import pymysql
 import sqlalchemy
 
 
-# In[ ]:
-
-
-#OPTIONAL DONT RUN IT! 
-# Tell Python where to find src/ At the top of your notebook:
-import os, sys
-
-# adjust the path so Python can import from src/
-sys.path.insert(0, os.path.abspath("src"))
-
-# now you can import your ETL functions
-from transform_load import load_raw_items, normalize, create_and_load
-
-
-# In[ ]:
-
-
-# OPTIONAL DONT RUN IT!
-# Override RAW-DIR if needed
-# after importing, re-point RAW_DIR for notebook context
-from transform_load import RAW_DIR as _orig_raw_dir
-import os
-RAW_DIR = os.path.abspath("data/raw")
-
-
-# In[ ]:
-
-
-# OPTIONAL DONT RUN IT!
-# Run your pipeline interactively
-raw = load_raw_items(RAW_DIR)
-dates, sources, authors, pubs, pub_auth = normalize(raw)
-create_and_load(dates, sources, authors, pubs, pub_auth)
-
-
 # ######    ───── CONFIG  part   ───── ───── ───── ───── ───── ───── ───── ─────
 
 # In[15]:
-
 
 # 1) Point this at your MySQL DW (replace placeholders):
 DB_URI = "mysql+pymysql://Milosh_85:Nikoljdan2021@127.0.0.1:3306/scilit_db"
@@ -320,14 +171,6 @@ def load_raw_items(raw_dir):# imamo praznu listu, zatim kreiramo putanju gde nam
                 items.append(json.load(f))
     return items
 
-
-# Reasoning: since I started with a concept of slicing a JSON to separate files , here I am using the oposite mehtod and packageng them back to a list structure 
-# Why do we need a list _? reasoninng :if the ata have arrived that day ... each of 186 json fiels we assuemtheya re new and obvisuly eachof them need to be prcesseed
-# and loaded into the DB. That's why we need to put each of those int o item list . 
-
-# 01/07/2025 krecem sa def_Normalize() funckijom 
-
-# In[92]:
 
 
 def normalize(items):
@@ -503,308 +346,6 @@ def create_and_load(dates, sources, authors, pubs, pub_auth):
 print("All tables created and loaded successfully.")
 
 
-# ### adding solution from Copilot
-
-# In[42]:
-
-
-from sqlalchemy import create_engine, text
-import pandas as pd
-
-# 1) Create your engine (dialect “mysql+pymysql” is correct)
-engine = create_engine("mysql+pymysql://Milosh_85:Nikoljdan2021@127.0.0.1:3306/scilit_db")
-
-TABLE_ORDER = [
-    "publication_authors",
-    "publications",
-    "authors",
-    "sources",
-    "dates"
-]
-
-DDL = [
-    # Drop in reverse‐dependency order:
-    "DROP TABLE IF EXISTS publication_authors;",
-    "DROP TABLE IF EXISTS publications;",
-    "DROP TABLE IF EXISTS authors;",
-    "DROP TABLE IF EXISTS sources;",
-    "DROP TABLE IF EXISTS dates;",
-
-    # Recreate:
-    """
-    CREATE TABLE dates (
-      date_id   INT PRIMARY KEY,
-      year      INT,
-      month     INT,
-      day       INT
-    );
-    """,
-    """
-    CREATE TABLE sources (
-      source_id   INT PRIMARY KEY,
-      source_name VARCHAR(255)
-    );
-    """,
-    """
-    CREATE TABLE authors (
-      author_id    INT PRIMARY KEY,
-      given_name   VARCHAR(100),
-      family_name  VARCHAR(100),
-      affiliation  VARCHAR(255)
-    );
-    """,
-    """
-    CREATE TABLE publications (
-      publication_id   INT PRIMARY KEY,
-      doi              VARCHAR(255),
-      title            TEXT,
-      publisher        VARCHAR(255),
-      type             VARCHAR(50),
-      source_id        INT,
-      issued_date_id   INT,
-      FOREIGN KEY (source_id)      REFERENCES sources(source_id),
-      FOREIGN KEY (issued_date_id) REFERENCES dates(date_id)
-    );
-    """,
-    """
-    CREATE TABLE publication_authors (
-      publication_id   INT,
-      author_id        INT,
-      sequence         INT,
-      PRIMARY KEY (publication_id, author_id),
-      FOREIGN KEY (publication_id) REFERENCES publications(publication_id),
-      FOREIGN KEY (author_id)      REFERENCES authors(author_id)
-    );
-    """
-]
-
-def create_and_load(dates, sources, authors, pubs, pub_auth):
-    # 1) Drop & recreate schema
-    with engine.begin() as conn:
-        for stmt in DDL:
-            conn.execute(text(stmt))
-
-        # 2) Bulk load INTO that same connection
-        pd.DataFrame(dates) .to_sql("dates",                conn, if_exists="append", index=False)
-        pd.DataFrame(sources).to_sql("sources",             conn, if_exists="append", index=False)
-        pd.DataFrame(authors).to_sql("authors",             conn, if_exists="append", index=False)
-        pd.DataFrame(pubs)   .to_sql("publications",        conn, if_exists="append", index=False)
-        pd.DataFrame(pub_auth).to_sql("publication_authors",conn, if_exists="append", index=False)
-
-    print("✅ All tables created and loaded successfully.")
-
-
-# In[107]:
-
-
-#option b with adding a raw DBAPI connection to pandas 
-
-# hand pandas an object that actually has .cursor(). The simplest is engine.raw_connection(). 
-# For example, move your inserts outside the with engine.begin() block :
-
-engine = create_engine("mysql+pymysql://Milosh_85:Nikoljdan2021@127.0.0.1:3306/scilit_db")
-    #engine = create_engine(DB_URI, echo=False)
-
-def create_and_load(dates, sources, authors, pubs, pub_auth):
-    """Drop & recreate tables, then bulk-insert via pandas.to_sql()."""
-    
-    # 1) Dropping part (DDl) - Drop in reverse-dependency order Child tables 
-    # with FKs go first so you don’t violate referential integrity when dropping
-    drop_order = [
-         "publication_authors",
-         "publications",
-         "authors",
-         "sources",
-         "dates"
-        ]
-    # 2) Create tables (DDL) (parent → child)
-    ddl_statements = [
-        """
-        CREATE TABLE dates (
-          date_id INT NOT NULL,
-          year INT,
-          month INT,
-          day INT,
-          PRIMARY KEY (date_id)
-        )""",
-        """
-        CREATE TABLE sources (
-          source_id INT NOT NULL,
-          source_name VARCHAR(255),
-          PRIMARY KEY (source_id)
-        )""",
-        """
-        CREATE TABLE authors (
-          author_id INT NOT NULL,
-          given_name VARCHAR(100),
-          family_name VARCHAR(100),
-          affiliation VARCHAR(255),
-          PRIMARY KEY (author_id)
-        )""",
-        """
-        CREATE TABLE publications (
-          publication_id INT NOT NULL,
-          doi VARCHAR(255),
-          title VARCHAR(255),
-          publisher VARCHAR(255),
-          type VARCHAR(50),
-          source_id INT,
-          issued_date_id INT,
-          PRIMARY KEY (publication_id),
-          FOREIGN KEY (source_id) REFERENCES sources(source_id),
-          FOREIGN KEY (issued_date_id) REFERENCES dates(date_id)
-        )""",
-        """
-        CREATE TABLE publication_authors (
-          publication_id INT,
-          author_id INT,
-          sequence INT,
-          PRIMARY KEY (publication_id, author_id),
-          FOREIGN KEY (publication_id) REFERENCES publications(publication_id),
-          FOREIGN KEY (author_id) REFERENCES authors(author_id)
-        )"""
-        ]
-
-    with engine.begin() as conn:
-        for tbl in drop_order:
-            conn.execute(text(f"DROP TABLE IF EXISTS {tbl}"))
-        for stmt in ddl_statements:
-            conn.execute(text(stmt))
-            
-#3  Bulk‐load via pandas, using a raw DBAPI connection (moving to-sql() part out of the with engine.begin() block)
-        raw_conn = engine.raw_connection()
-        try:
-            pd.DataFrame(dates).to_sql(
-                name="dates",
-                con=raw_conn,
-                if_exists="append",
-                index=False
-            )
-            pd.DataFrame(sources).to_sql(name = "sources", con=conn, if_exists="append", index=False)
-            pd.DataFrame(authors).to_sql(name = "authors", con=conn, if_exists="append", index=False)
-            pd.DataFrame(pubs).to_sql(name = "publications", con=conn, if_exists="append", index=False)
-            pd.DataFrame(pub_auth).to_sql(name = "publication_authors", con=conn, if_exists="append", index=False)
-            raw_conn.commit()
-        finally:
-            raw_conn.close()
-
-print("All tables created and loaded successfully.")
-
-
-# In[86]:
-
-
-# option c:with using SQLAlchemy.Connection  
-
-engine = create_engine("mysql+pymysql://Milosh_85:Nikoljdan2021@127.0.0.1:3306/scilit_db")
-    #engine = create_engine(DB_URI, echo=False)
-
-def create_and_load(dates, sources, authors, pubs, pub_auth):
-    """Drop & recreate tables, then bulk-insert via pandas.to_sql()."""
-    
-    # 1) Dropping part (DDl) - Drop in reverse-dependency order Child tables 
-    # with FKs go first so you don’t violate referential integrity when dropping
-    drop_order = [
-        "publication_authors",
-        "publications",
-        "authors",
-        "sources",
-        "dates"
-    ]
-    # 2) Create tables (DDL) (parent → child)
-    ddl_statements = [
-        """
-        CREATE TABLE dates (
-          date_id INT NOT NULL,
-          year INT,
-          month INT,
-          day INT,
-          PRIMARY KEY (date_id)
-        )""",
-        """
-        CREATE TABLE sources (
-          source_id INT NOT NULL,
-          source_name VARCHAR(255),
-          PRIMARY KEY (source_id)
-        )""",
-        """
-        CREATE TABLE authors (
-          author_id INT NOT NULL,
-          given_name VARCHAR(100),
-          family_name VARCHAR(100),
-          affiliation VARCHAR(255),
-          PRIMARY KEY (author_id)
-        )""",
-        """
-        CREATE TABLE publications (
-          publication_id INT NOT NULL,
-          doi VARCHAR(255),
-          title VARCHAR(255),
-          publisher VARCHAR(255),
-          type VARCHAR(50),
-          source_id INT,
-          issued_date_id INT,
-          PRIMARY KEY (publication_id),
-          FOREIGN KEY (source_id) REFERENCES sources(source_id),
-          FOREIGN KEY (issued_date_id) REFERENCES dates(date_id)
-        )""",
-        """
-        CREATE TABLE publication_authors (
-          publication_id INT,
-          author_id INT,
-          sequence INT,
-          PRIMARY KEY (publication_id, author_id),
-          FOREIGN KEY (publication_id) REFERENCES publications(publication_id),
-          FOREIGN KEY (author_id) REFERENCES authors(author_id)
-        )"""
-        ]
-
-    with engine.begin() as sa_conn:
-        for tbl in drop_order:
-            sa_conn.execute(text(f"DROP TABLE IF EXISTS {tbl}"))
-        for stmt in ddl_statements:
-            sa_conn.execute(text(stmt))
-            
-    # 3) Bulk insert (we call con=engine instead of conn, as pandas nwo recognizes the engine and internally calls DBAPI to to the insert)
-        pd.DataFrame(dates).to_sql(name = "dates", con=sa_conn, if_exists="append", index=False)
-        pd.DataFrame(sources).to_sql(name = "sources", con=sa_conn, if_exists="append", index=False)
-        pd.DataFrame(authors).to_sql(name = "authors", con=sa_conn, if_exists="append", index=False)
-        pd.DataFrame(pubs).to_sql(name = "publications", con=sa_conn, if_exists="append", index=False)
-        pd.DataFrame(pub_auth).to_sql(name = "publication_authors", con=sa_conn, if_exists="append", index=False)
-
-print("All tables created and loaded successfully.")
-
-
-# In[ ]:
-
-
-print(pd.__version__)
-
-
-# In[ ]:
-
-
-get_ipython().system('pip install pandas==1.3.5')
-
-
-# In[ ]:
-
-
-pip install --upgrade pandas
-
-
-# In[ ]:
-
-
-# due to the constant fails when it comes to SQL Alchemy connectivity, i downloaded lower version fo pandas
->> pip install pandas==1.3.5
-Installing collected packages: pandas
-  Attempting uninstall: pandas
-    Found existing installation: pandas 2.0.2
-
-
-# In[46]:
-
 
 RAW_DIR = "C:\\Users\\milos\\data\\raw"
 
@@ -819,91 +360,22 @@ RAW_DIR = "C:\\Users\\milos\\data\\raw"
 raw = load_raw_items(RAW_DIR)
 
 
-# In[48]:
-
-
-type(raw)
-
-
-# In[95]:
-
-
 #calling our second function normalize(raw)
 dates, sources, authors, pubs, pub_auth = normalize(raw)
-
-
-# In[96]:
 
 
 len(dates), len(sources), len(authors), len(pubs), len(pub_auth)
 
 
-# In[72]:
-
-
-sources
-
-
-# In[71]:
-
-
-pub_auth
-
-
-# In[66]:
-
-
-pubs
-
-
-# In[51]:
-
-
-type(dates)
-
-
-# In[52]:
-
-
-dates_df = pd.DataFrame(dates)
-dates_df.shape
-
-
-# In[53]:
-
-
-authors_df = pd.DataFrame(authors)
-
-
-# In[54]:
-
-
-authors_df.shape
-
-
-# In[55]:
-
-
-dates[0]
-
-
-# In[100]:
-
 
 #callng our third function : create_and_load()
 create_and_load(dates, sources, authors, pubs, pub_auth)
 
-
 # In[57]:
-
 
 dates, sources, authors, pubs, pub_auth
 
 
-# In[151]:
-
-
-pub_auth
 
 
 # ## Transform part 
